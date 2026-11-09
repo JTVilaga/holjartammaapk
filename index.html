@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" data-jtak-teljes>
+  <meta name="theme-color" content="#1f6f43">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="ikon/ikon-192.png">
+  <link rel="apple-touch-icon" href="ikon/ikon-192.png">
+  <meta name="generator" content="JT AppKreator 2.7.0">
+  <title>Hol jártam ma</title>
+  <link rel="stylesheet" href="lib/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="jtak-teljes.js"></script>
+</head>
+<body>
+  <header>
+    <h1>🗺️ Hol jártam ma</h1>
+    <p>Útnapló és km-óra ellenőrzés GPS alapján.</p>
+    <p id="valtozat" class="valtozat"></p>
+  </header>
+
+  <main>
+    <section class="gombok">
+      <button type="button" class="gomb" id="inditas">▶ Követés indítása</button>
+      <button type="button" class="gomb leallit" id="leallitas" hidden>■ Leállítás</button>
+    </section>
+
+    <!-- Élő kijelző követés közben: megtett km, és ha be van kapcsolva, a sebesség -->
+    <section id="elo" class="elo" hidden>
+      <div><span class="elo-szam" id="eloKm">0,00</span> <span class="elo-egyseg" id="eloKmJel">km</span></div>
+      <div id="eloSebDoboz" hidden><span class="elo-szam" id="eloSeb">–</span> <span class="elo-egyseg sebjel">km/h</span>
+        <div class="elo-kicsi">max. <span id="eloMax">–</span> <span class="sebjel">km/h</span></div></div>
+    </section>
+
+    <p id="allapot" class="allapot"></p>
+    <p id="gps" class="kicsi"></p>
+    <p id="ebren" class="kicsi"></p>
+
+    <section class="nap">
+      <label for="napValaszto">Nap:</label>
+      <select id="napValaszto"></select>
+      <label for="szakaszValaszto">Szakasz:</label>
+      <select id="szakaszValaszto"></select>
+    </section>
+
+    <div class="terkep-keret">
+      <div id="terkep" class="terkep"></div>
+      <button type="button" id="terkepZar" class="terkep-zar">👆 Koppints a térkép mozgatásához</button>
+      <button type="button" id="terkepKesz" class="terkep-kesz" hidden>✓ Kész</button>
+    </div>
+
+    <p id="osszesito" class="osszesito"></p>
+
+    <!-- Egy szakasz adatai: név és km-óra összevetés -->
+    <section id="utPanel" class="kartya" hidden>
+      <h2>Szakasz adatai</h2>
+      <label class="mezo">Név <input type="text" id="utNev" placeholder="pl. Pétfürdő – Veszprém"></label>
+      <div class="ket-mezo">
+        <label class="mezo">Óraállás induláskor <input type="number" id="utKmEleje" inputmode="decimal" step="0.1" min="0"></label>
+        <label class="mezo">Óraállás érkezéskor <input type="number" id="utKmVege" inputmode="decimal" step="0.1" min="0"></label>
+      </div>
+      <label class="mezo">Az autó órája <select id="utOraEgyseg"><option value="km">km-ben mér</option><option value="mi">mérföldben mér</option></select></label>
+      <p class="kicsi">Ha csak a napi számlálót nézed: induláskor nullázd, és érkezéskor írd be az értékét a második mezőbe (az első maradhat üres vagy 0).</p>
+      <button type="button" class="gomb" id="utMentes">Mentés</button>
+      <p id="utOsszevetes" class="osszevetes"></p>
+    </section>
+
+    <div id="szunetek" class="szunetdoboz" hidden></div>
+
+    <section class="gombok">
+      <button type="button" class="gomb masodlagos" id="letoltes">⬇️ GPX mentése</button>
+      <button type="button" class="gomb masodlagos" id="megosztas" hidden>↗️ Megosztás</button>
+      <button type="button" class="gomb masodlagos torol" id="torles">Nap törlése</button>
+    </section>
+
+    <details id="utLista" class="kartya">
+      <summary>📊 Utak listája (havonta)</summary>
+      <div id="utListaTartalom"></div>
+    </details>
+
+    <details class="kartya">
+      <summary>⚙️ Beállítások és biztonsági mentés</summary>
+      <label class="mezo">Mértékegység <select id="egysegValaszto"><option value="km">kilométer (km, km/h)</option><option value="mi">mérföld (mi, mph)</option></select></label>
+      <label class="mezo">Indítás/leállítás gomb a vízszintes kijelzőn <select id="vzOldalValaszto"><option value="bal">bal alsó sarokban (pl. Magyarország)</option><option value="jobb">jobb alsó sarokban (pl. Anglia)</option></select></label>
+      <label class="jelolo"><input type="checkbox" id="sebKapcsolo"> Sebesség kijelzése (követés közben a mostani és a legnagyobb sebesség, az összesítőben a mozgásidő és a mozgási átlag)</label>
+      <h3>Biztonsági mentés</h3>
+      <p class="kicsi">Ha az appot eltávolítod vagy új telefonra váltasz, az utak elvesznének. A mentés minden adatot egy fájlba tesz a Dokumentumok/HolJartam mappába; a visszatöltés a fájlból hozzáadja azokat, amik még nincsenek meg.</p>
+      <div class="gombok">
+        <button type="button" class="gomb masodlagos" id="mentesGomb">💾 Biztonsági mentés</button>
+        <button type="button" class="gomb masodlagos" id="visszaGomb">📂 Visszatöltés fájlból</button>
+        <input type="file" id="visszaFajl" accept=".json,application/json" hidden>
+      </div>
+    </details>
+  </main>
+
+  <footer>
+    A pontok az app saját tárolójában vannak, ezen a telefonon (készíts időnként biztonsági mentést).
+    A követés zárt képernyőnél és másik appnál is megy; közben az értesítési panelen „követés fut” értesítés látszik.
+    A km a GPS-pontok közti távolságok összege: alagútban, mélygarázsban, rossz jelnél kevesebbet mérhet.
+    A <b>GPX</b> fájlt a térképes appok (pl. OsmAnd, Google Earth) megnyitják. A térkép az OpenStreetMap-ről jön, ehhez internet kell; a pontok netkapcsolat nélkül is gyűlnek.
+    <span id="apkMegj" hidden></span>
+  </footer>
+
+  <div id="uzenet" class="uzenet" role="status" hidden></div>
+
+  <!-- Vízszintes kijelző (oldalra fordított telefon): pontos idő és sebesség. Koppintásra eltűnik. -->
+  <div id="vizszintes" class="vizszintes" hidden>
+    <div id="vzIdo" class="vz-ido">00:00</div>
+    <div class="vz-seb"><span id="vzSeb">–</span> <span class="vz-egyseg sebjel">km/h</span></div>
+    <div id="vzMegj" class="vz-megj"></div>
+    <!-- Indítás / leállítás: mindig csak az, ami épp kellhet. A leállításhoz nyomva kell tartani (véletlen érintés ellen). -->
+    <button type="button" id="vzGomb" class="vz-gomb"></button>
+  </div>
+
+  <script src="lib/leaflet/leaflet.js"></script>
+  <script src="js/app.js"></script>
+  <p class="jtak-keszult" style="text-align:center;font:12px/1.4 system-ui,sans-serif;opacity:.6;margin:16px 0">Készült a JT AppKreatorral</p>
+  <script src="js/telepites.js"></script>
+</body>
+</html>

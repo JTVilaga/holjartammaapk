@@ -1,0 +1,79 @@
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #f3f5f9; color: #1b2430; }
+header { background: #1f6f43; color: #fff; padding: 16px; }
+header h1 { margin: 0 0 4px; font-size: 1.4rem; }
+header p { margin: 0; opacity: .9; }
+header .valtozat { margin-top: 6px; font-size: .8rem; opacity: .75; }
+main { max-width: 720px; margin: 0 auto; padding: 16px; }
+.gombok { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
+.gomb { display: inline-block; padding: 12px 18px; border: 0; border-radius: 10px; background: #1f6f43; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.gomb.leallit { background: #c62828; }
+.gomb.masodlagos { background: #e3f1e8; color: #1f6f43; }
+.gomb.torol { color: #c62828; background: #fbe9e9; }
+.gomb:disabled { opacity: .5; cursor: default; }
+.allapot { color: #5d6b7c; min-height: 1.4em; margin: 6px 0; }
+.allapot.hiba { color: #c62828; }
+.allapot.fut { color: #1f6f43; font-weight: 600; }
+.kicsi { color: #5d6b7c; font-size: .9rem; margin: 2px 0; min-height: 1.2em; }
+.nap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 8px; }
+.nap select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid #c5ccd6; background: #fff; }
+.terkep { height: 60vh; min-height: 280px; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(16, 32, 64, .08); background: #dde3ea; }
+.osszesito { font-weight: 600; margin: 10px 0 0; min-height: 1.4em; }
+footer { max-width: 720px; margin: 0 auto; padding: 0 16px 24px; color: #5d6b7c; font-size: .85rem; }
+.nap select { max-width: 100%; }
+.linkgomb { border: 0; background: none; padding: 0; color: #1f6f43; font: inherit; text-decoration: underline; cursor: pointer; }
+.terkep-keret { position: relative; }
+.terkep-zar { position: absolute; inset: 0; z-index: 1000; border: 0; border-radius: 12px; background: transparent; cursor: pointer;
+  display: flex; align-items: flex-end; justify-content: center; padding: 0 0 12px; font: inherit; font-weight: 600; color: #1b2430;
+  text-shadow: 0 0 4px #fff, 0 0 8px #fff; }
+.terkep-kesz { position: absolute; top: 10px; right: 10px; z-index: 1001; border: 0; border-radius: 8px; padding: 8px 14px; background: #1f6f43; color: #fff; font: inherit; font-weight: 600; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+.szunetdoboz { max-height: 8.5em; overflow-y: auto; background: #fff; border: 1px solid #dde3ea; border-radius: 10px; padding: 8px 12px; margin: 8px 0; font-size: .9rem; color: #5d6b7c; }
+.szunetdoboz .fej { font-weight: 600; color: #1b2430; margin-bottom: 4px; position: sticky; top: -8px; background: #fff; padding-top: 2px; }
+.szunetdoboz div { padding: 2px 0; }
+.uzenet { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 2000; max-width: calc(100% - 32px); background: #1b2430; color: #fff;
+  padding: 12px 18px; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.3); font-size: .95rem; }
+.uzenet.hiba { background: #c62828; }
+.elo { display: flex; gap: 28px; align-items: flex-end; background: #fff; border-radius: 12px; padding: 10px 16px; margin: 8px 0; box-shadow: 0 2px 8px rgba(16, 32, 64, .08); }
+.elo-szam { font-size: 2.6rem; font-weight: 700; color: #1f6f43; line-height: 1; font-variant-numeric: tabular-nums; }
+.elo-egyseg { font-size: 1rem; color: #5d6b7c; }
+.elo-kicsi { font-size: .85rem; color: #5d6b7c; }
+.kartya { background: #fff; border-radius: 12px; padding: 12px 14px; margin: 12px 0; box-shadow: 0 2px 8px rgba(16, 32, 64, .08); }
+.kartya h2 { font-size: 1.05rem; margin: 0 0 8px; }
+.kartya h3 { font-size: .95rem; margin: 14px 0 6px; }
+.kartya summary { font-weight: 600; cursor: pointer; padding: 2px 0; }
+.mezo { display: block; font-size: .9rem; color: #5d6b7c; margin: 6px 0; }
+.mezo input { display: block; width: 100%; font: inherit; color: #1b2430; padding: 10px; border: 1px solid #c5ccd6; border-radius: 8px; margin-top: 3px; }
+.ket-mezo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.osszevetes { font-weight: 600; color: #1f6f43; margin: 10px 0 0; min-height: 1.2em; }
+.jelolo { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0; }
+.ut-sor { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; width: 100%; text-align: left; background: #f3f5f9; border: 0; border-radius: 8px; padding: 8px 10px; margin: 4px 0; font: inherit; color: #1b2430; cursor: pointer; }
+.ut-km { font-weight: 600; white-space: nowrap; }
+.ut-ora { grid-column: 1 / -1; font-size: .85rem; color: #1f6f43; }
+
+/* Vízszintes kijelző: fekete háttér, nagy számok. A forgatott változat (automatikus elforgatás nélkül) a képernyő
+   rövid oldalát használja magasságnak. */
+.vizszintes { position: fixed; inset: 0; z-index: 3000; background: #000; color: #fff; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; font-variant-numeric: tabular-nums; user-select: none; }
+.vz-ido { font-size: 36vmin; font-weight: 700; line-height: 1; letter-spacing: .02em; }
+.vz-seb { font-size: 26vmin; font-weight: 600; line-height: 1.1; color: #7CFC9A; }
+.vz-egyseg { font-size: 7vmin; color: #9aa5b1; font-weight: 400; }
+.vz-megj { font-size: 4vmin; color: #9aa5b1; min-height: 1.2em; margin-top: 1vmin; }
+.vz-megj.fut { color: #7CFC9A; }
+.vizszintes.forgatva-jobbra, .vizszintes.forgatva-balra { inset: auto; top: 50%; left: 50%; width: 100vh; height: 100vw; }
+.vizszintes.forgatva-jobbra { transform: translate(-50%, -50%) rotate(-90deg); }
+.vizszintes.forgatva-balra { transform: translate(-50%, -50%) rotate(90deg); }
+.mezo select { display: block; width: 100%; font: inherit; color: #1b2430; padding: 10px; border: 1px solid #c5ccd6; border-radius: 8px; margin-top: 3px; background: #fff; }
+
+/* Vízszintes kijelző: indítás / leállítás gomb a bal vagy a jobb alsó sarokban (Beállítások). A leállításhoz nyomva kell tartani: közben
+   a gomb pirossal feltöltődik (1,2 s). */
+.vz-gomb { position: absolute; right: 4vmin; bottom: 4vmin; min-width: 30vmin; padding: 3vmin 4vmin; border: 0; border-radius: 3vmin;
+  font: inherit; font-size: 5vmin; font-weight: 700; color: #fff; background: #1f6f43; cursor: pointer; touch-action: none;
+  -webkit-tap-highlight-color: transparent; user-select: none; overflow: hidden; }
+.vz-gomb.bal { right: auto; left: 4vmin; }
+.vz-gomb.stop { background: #3a1416; color: #ffb4b4; border: .5vmin solid #c62828; }
+.vz-gomb.stop::before { content: ''; position: absolute; inset: 0; background: #c62828; transform: scaleX(0); transform-origin: left; z-index: -1; }
+.vz-gomb.stop { isolation: isolate; }
+.vz-gomb.stop.tart::before { transform: scaleX(1); transition: transform 1.2s linear; }
+.vz-gomb.stop.tart { color: #fff; }
+.vz-gomb small { display: block; font-size: 3vmin; font-weight: 400; opacity: .8; }
