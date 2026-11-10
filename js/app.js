@@ -1,5 +1,5 @@
 // A VERZIO sort a JT AppKreator szúrta be; az app-update.bat ezt emeli.
-const VERZIO = '1.12';
+const VERZIO = '1.14';
 
 // Hol jártam ma – útnapló és km-óra ellenőrzés GPS alapján (Android-app, a JT AppKreatorral készül).
 // - hely: az APK-ban a Háttérben követés bővítmény (@capacitor-community/background-geolocation): zárt képernyőnél
@@ -238,13 +238,104 @@ function terkepZar(zarva) {
   clearTimeout(terkepIdo);
   if (!zarva) terkepIdo = setTimeout(() => terkepZar(true), 30000);
 }
-$('terkepZar').addEventListener('click', () => terkepZar(false));
+$('terkepZar').addEventListener('click', e => {
+  terkepZar(false);
+  // A zárt térképre koppintás is megmutatja a hely címét (billentyűs „kattintásnál” nincs érintési pont).
+  if (e.clientX || e.clientY) cimKeres(terkep.mouseEventToLatLng(e));
+});
 $('terkepKesz').addEventListener('click', () => terkepZar(true));
 // Mozgatás közben a fél perc újraindul (csak a felhasználó érintése számít, a program általi mozgatás nem).
 ['pointerdown', 'wheel'].forEach(e => $('terkep').addEventListener(e, () => { if ($('terkepZar').hidden) terkepZar(false); }, { passive: true }));
 terkepZar(true);
 let itt = null;          // a mostani hely jele
 let elozoVonal = null;   // a futó szakasz vonala (élő rajzoláshoz)
+
+// ---- Cím a térképre koppintva (fordított címkeresés: OpenStreetMap Nominatim, internet kell) ----
+// A koppintott pontnál felugró buborék: utca, házszám, település, megye, ország – amilyen pontosan ismert.
+// Ha a látott útvonal 150 m-en belül van, azt is kiírja, mikor jártál ott.
+// A Nominatim legfeljebb 1 kérést enged másodpercenként: a kéréseket ennek megfelelően ritkítjuk, és a
+// már lekérdezett pontokat megjegyezzük (a memóriában, az app bezárásáig).
+const CIM_CIM = 'https://nominatim.openstreetmap.org/reverse';
+const cimTar = new Map();          // kerekített koordináta → cím (HTML)
+let cimBuborek = null;             // a térképen nyitott buborék
+let cimKeres_utolso = 0;           // az előző kérés ideje (ms)
+let cimKeres_szam = 0;             // a legutóbbi koppintás sorszáma (a régebbi válasz ne írja felül az újat)
+let cimKattIdo = null;             // dupla koppintás (nagyítás) kiszűrése
+
+// A címadatokból olvasható, magyar sorrendű szöveg (HTML).
+function cimSzoveg(adat) {
+  const a = adat.address || {};
+  const telep = a.city || a.town || a.village || a.municipality || a.hamlet || '';
+  const resz = [a.city_district, a.suburb, a.quarter, a.neighbourhood].find(x => x && x !== telep) || '';
+  const utca = a.road || a.pedestrian || a.footway || a.cycleway || a.path || a.track || '';
+  const sorok = [];
+  if (adat.name && adat.name !== utca) sorok.push('<b>' + esc(adat.name) + '</b>');
+  if (utca) sorok.push((sorok.length ? '' : '<b>') + esc(utca + (a.house_number ? ' ' + a.house_number + '.' : '')) + (sorok.length ? '' : '</b>'));
+  const varos = [a.postcode, telep].filter(Boolean).join(' ') + (resz ? ', ' + resz : '');
+  if (varos.trim()) sorok.push((sorok.length ? '' : '<b>') + esc(varos) + (sorok.length ? '' : '</b>'));
+  const tag = [a.county, a.state, a.country].filter(Boolean).filter((x, i, l) => l.indexOf(x) === i).join(', ');
+  if (tag) sorok.push('<span class="cim-kicsi">' + esc(tag) + '</span>');
+  if (!sorok.length && adat.display_name) sorok.push(esc(adat.display_name));
+  return sorok.join('<br>');
+}
+
+// A látott útvonal legközelebbi pontja a koppintáshoz: mikor jártál ott (ha 150 m-en belül van).
+function cimItJartal(ll) {
+  let legjobb = null, legkisebb = Infinity;
+  const hol = { sz: ll.lat, h: ll.lng };
+  for (const p of napiPontok) {
+    const d = tav(hol, p);
+    if (d < legkisebb) { legkisebb = d; legjobb = p; }
+  }
+  if (!legjobb || legkisebb > 150) return '';
+  return '<div class="cim-ido">🕒 Itt jártál: <b>' + oraPerc(legjobb.ido) + '</b> (kb. ' + Math.round(legkisebb) + ' m-re a vonaltól)</div>';
+}
+
+// A buborék kiírása a koppintott pontnál.
+function cimBuborekKiir(ll, belso) {
+  const html = '<div class="cim-buborek">' + belso + cimItJartal(ll)
+    + '<div class="cim-kicsi">' + tizedes(ll.lat, 5) + '; ' + tizedes(ll.lng, 5) + '</div></div>';
+  if (!cimBuborek) cimBuborek = L.popup({ maxWidth: 260, autoPanPadding: [20, 20] });
+  cimBuborek.setLatLng(ll).setContent(html);
+  if (!terkep.hasLayer(cimBuborek)) cimBuborek.openOn(terkep);
+}
+
+// Címkeresés egy pontra.
+async function cimKeres(ll) {
+  const sorszam = ++cimKeres_szam;
+  const kulcs = ll.lat.toFixed(5) + ',' + ll.lng.toFixed(5);
+  if (cimTar.has(kulcs)) { cimBuborekKiir(ll, cimTar.get(kulcs)); return; }
+  if (!navigator.onLine) { cimBuborekKiir(ll, '<i>A cím kereséséhez internet kell.</i>'); return; }
+  cimBuborekKiir(ll, '<i>Cím keresése…</i>');
+  // Legalább 1,1 másodperc a két kérés között (a Nominatim szabálya).
+  const varni = cimKeres_utolso + 1100 - Date.now();
+  if (varni > 0) await new Promise(k => setTimeout(k, varni));
+  if (sorszam !== cimKeres_szam) return;          // közben újabb koppintás jött: az számít
+  cimKeres_utolso = Date.now();
+  const cim = CIM_CIM + '?format=jsonv2&addressdetails=1&zoom=18&accept-language=hu'
+    + '&lat=' + ll.lat.toFixed(6) + '&lon=' + ll.lng.toFixed(6);
+  let belso;
+  try {
+    const valasz = await fetch(cim, { headers: { 'Accept': 'application/json' } });
+    if (!valasz.ok) throw new Error('HTTP ' + valasz.status);
+    const adat = await valasz.json();
+    if (adat.error) belso = '<i>Itt nem található cím (pl. vízen vagy lakatlan helyen).</i>';
+    else {
+      belso = cimSzoveg(adat) || '<i>Ehhez a ponthoz nincs részletes cím.</i>';
+      cimTar.set(kulcs, belso);
+    }
+  } catch (e) {
+    belso = '<i>A címet most nem sikerült lekérni (' + esc(e.message || 'hálózati hiba') + '). Van internet?</i>';
+  }
+  if (sorszam === cimKeres_szam && cimBuborek && terkep.hasLayer(cimBuborek)) cimBuborekKiir(ll, belso);
+}
+
+// Koppintás a (mozgatható) térképre: kicsit várunk, hogy a dupla koppintás (nagyítás) ne keressen címet.
+terkep.on('click', e => {
+  clearTimeout(cimKattIdo);
+  cimKattIdo = setTimeout(() => cimKeres(e.latlng), 300);
+});
+terkep.on('dblclick', () => clearTimeout(cimKattIdo));
 
 // ---- A látott nap / szakasz ----
 let latottNap = ma();

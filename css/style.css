@@ -77,3 +77,8 @@ footer { max-width: 720px; margin: 0 auto; padding: 0 16px 24px; color: #5d6b7c;
 .vz-gomb.stop.tart::before { transform: scaleX(1); transition: transform 1.2s linear; }
 .vz-gomb.stop.tart { color: #fff; }
 .vz-gomb small { display: block; font-size: 3vmin; font-weight: 400; opacity: .8; }
+
+/* Cím-buborék a térképre koppintva */
+.cim-buborek { font: 14px/1.4 system-ui, sans-serif; }
+.cim-kicsi { font-size: 12px; opacity: .7; }
+.cim-ido { margin-top: 6px; color: #1f6f43; }
