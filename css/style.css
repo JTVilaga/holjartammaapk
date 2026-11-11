@@ -21,6 +21,11 @@ main { max-width: 720px; margin: 0 auto; padding: 16px; }
 .terkep { height: 60vh; min-height: 280px; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(16, 32, 64, .08); background: #dde3ea; }
 .osszesito { font-weight: 600; margin: 10px 0 0; min-height: 1.4em; }
 footer { max-width: 720px; margin: 0 auto; padding: 0 16px 24px; color: #5d6b7c; font-size: .85rem; }
+/* Nagy képernyőn (laptop, PWA): szélesebb oldal és nagyobb térkép – a telefonos nézet nem változik. */
+@media (min-width: 1000px) {
+  main, footer { max-width: 1280px; }
+  .terkep { height: 75vh; }
+}
 .nap select { max-width: 100%; }
 .linkgomb { border: 0; background: none; padding: 0; color: #1f6f43; font: inherit; text-decoration: underline; cursor: pointer; }
 .terkep-keret { position: relative; }

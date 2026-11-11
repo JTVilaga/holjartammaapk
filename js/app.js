@@ -1,5 +1,5 @@
 // A VERZIO sort a JT AppKreator szúrta be; az app-update.bat ezt emeli.
-const VERZIO = '1.14';
+const VERZIO = '1.16';
 
 // Hol jártam ma – útnapló és km-óra ellenőrzés GPS alapján (Android-app, a JT AppKreatorral készül).
 // - hely: az APK-ban a Háttérben követés bővítmény (@capacitor-community/background-geolocation): zárt képernyőnél
@@ -330,6 +330,73 @@ async function cimKeres(ll) {
   if (sorszam === cimKeres_szam && cimBuborek && terkep.hasLayer(cimBuborek)) cimBuborekKiir(ll, belso);
 }
 
+// ---- Szakasz automatikus neve: honnan → hová ----
+// Az indulás helyét az első pontnál, az érkezését a leállításkor kérdezi le (település, utca), és a szakasz neve
+// „Várpalota, Fő utca → Pétfürdő, Berhidai út” lesz. Ha közben nincs internet, később pótolja (indításkor, és amikor
+// a net visszajön). A saját, kézzel írt nevet nem írja felül: csak az üres vagy a korábban magától adott nevet.
+let cimSor = Promise.resolve();
+// Egy pont címe (a Nominatim adatai), sorban, a koppintásos kereséssel közös ritkítással (legalább 1,1 s).
+function cimLeker(sz, h) {
+  const f = cimSor.then(async () => {
+    const varni = cimKeres_utolso + 1100 - Date.now();
+    if (varni > 0) await new Promise(k => setTimeout(k, varni));
+    cimKeres_utolso = Date.now();
+    const v = await fetch(CIM_CIM + '?format=jsonv2&addressdetails=1&zoom=17&accept-language=hu&lat=' + sz.toFixed(6) + '&lon=' + h.toFixed(6),
+      { headers: { 'Accept': 'application/json' } });
+    if (!v.ok) throw new Error('HTTP ' + v.status);
+    return v.json();
+  });
+  cimSor = f.catch(() => {});
+  return f;
+}
+// Rövid hely: település, utca (ami ismert).
+function rovidCim(adat) {
+  const a = (adat && adat.address) || {};
+  const telep = a.city || a.town || a.village || a.municipality || a.hamlet || '';
+  const utca = a.road || a.pedestrian || a.footway || a.cycleway || a.path || a.track || '';
+  const s = [telep, utca].filter(Boolean).join(', ');
+  return s || (adat && adat.display_name ? adat.display_name.split(',').slice(0, 2).join(',').trim() : '');
+}
+const autoNevSzoveg = u => (u.indulas || '?') + ' → ' + (u.erkezes || '…');
+// Az indulás vagy az érkezés helye (mit: 'indulas' / 'erkezes') egy szakaszhoz; ha sikerült, frissíti a nevet is.
+async function vegpontNev(id, mit, pont) {
+  if (!pont || !navigator.onLine) return false;
+  let hely;
+  try {
+    const adat = await cimLeker(pont.sz, pont.h);
+    hely = (adat && !adat.error && rovidCim(adat)) || 'ismeretlen hely';
+  } catch (e) { return false; }
+  const u = await utOlvas(id);
+  if (!u) return false;                       // közben törölték
+  u[mit] = hely;
+  if (!u.nev || u.nev === u.autoNev) { u.nev = autoNevSzoveg(u); u.autoNev = u.nev; }
+  await utIr(u);
+  if (u.nap === latottNap) {
+    napiUtak.set(id, u);
+    if (latottSzakasz === id && document.activeElement !== $('utNev')) $('utNev').value = u.nev || '';
+    szakaszListaz(await napPontjai(latottNap));
+  }
+  if ($('utLista').open) utListaKiir();
+  return true;
+}
+// A hiányzó indulási / érkezési helyek pótlása (a legújabb szakaszokkal kezdve, egyszerre legfeljebb 20).
+let nevPotlasFut = false;
+async function nevekPotol() {
+  if (nevPotlasFut || !navigator.onLine) return;
+  nevPotlasFut = true;
+  try {
+    const utak = (await osszesUt()).filter(u => u.m != null && (!u.indulas || !u.erkezes) && (!u.nev || u.nev === u.autoNev)
+      && !(kovetes && u.szakasz === szakaszId)).sort((a, b) => b.szakasz - a.szakasz).slice(0, 20);
+    for (const u of utak) {
+      const pontok = (await szakaszPontjai(u.szakasz)).sort((a, b) => a.ido - b.ido);
+      if (!pontok.length) continue;
+      if (!u.indulas && !(await vegpontNev(u.szakasz, 'indulas', pontok[0]))) break;
+      if (!u.erkezes && !(await vegpontNev(u.szakasz, 'erkezes', pontok[pontok.length - 1]))) break;
+    }
+  } finally { nevPotlasFut = false; }
+}
+window.addEventListener('online', () => { setTimeout(nevekPotol, 2000); });
+
 // Koppintás a (mozgatható) térképre: kicsit várunk, hogy a dupla koppintás (nagyítás) ne keressen címet.
 terkep.on('click', e => {
   clearTimeout(cimKattIdo);
@@ -453,6 +520,7 @@ $('utMentes').addEventListener('click', async () => {
   const id = latottSzakasz;
   const u = (await utOlvas(id)) || { szakasz: id, nap: latottNap };
   u.nev = $('utNev').value.trim();
+  if (!u.nev && (u.indulas || u.erkezes)) { u.nev = autoNevSzoveg(u); u.autoNev = u.nev; $('utNev').value = u.nev; }   // üresen hagyva: az automatikus név
   u.kmEleje = szamOlvas($('utKmEleje').value);
   u.kmVege = szamOlvas($('utKmVege').value);
   u.oraEgyseg = $('utOraEgyseg').value;
@@ -586,7 +654,7 @@ function helyJott(p) {
       napiPontok.push(pont);
       osszesitoKiir(osszesit(napiPontok.slice()));
     } else await napRajzol(false);
-    if (elso) terkep.setView([pont.sz, pont.h], Math.max(terkep.getZoom(), 16));
+    if (elso) { terkep.setView([pont.sz, pont.h], Math.max(terkep.getZoom(), 16)); vegpontNev(pont.szakasz, 'indulas', pont); }
     else if ($('terkepZar').hidden === false) { /* a felhasználó épp mozgatja: nem rángatjuk */ }
     else if (!terkep.getBounds().pad(-0.2).contains([pont.sz, pont.h])) terkep.panTo([pont.sz, pont.h]);
     allapot('Követés fut – utolsó pont: ' + new Date(pont.ido).toLocaleTimeString('hu-HU'), 'fut');
@@ -666,6 +734,14 @@ async function leallit() {
   if (u.m == null) await tar('readwrite', s => s.delete(id), 'utak');   // pont nélküli szakasz: nincs mit megőrizni
   await napRajzol(true);
   if (u.m != null) uzenet('✓ Szakasz rögzítve: ' + tavSzoveg(u.m, 2) + '. Az óraállást lent írhatod be.');
+  if (u.m != null) {
+    // Az érkezés helye (és ha az indulásé még hiányzik, az is) – a szakasz nevéhez.
+    const pontok = (await szakaszPontjai(id)).sort((a, b) => a.ido - b.ido);
+    (async () => {
+      if (!u.indulas) await vegpontNev(id, 'indulas', pontok[0]);
+      await vegpontNev(id, 'erkezes', pontok[pontok.length - 1]);
+    })();
+  }
   if ($('utLista').open) utListaKiir();
 }
 $('inditas').addEventListener('click', indit);
@@ -916,7 +992,7 @@ if (apkban) {
 }
 if ($('beallitasok')) $('beallitasok').addEventListener('click', () => Hatter.openSettings().catch(() => {}));
 vzFrissit();
-napListaz().then(() => napRajzol(true)).then(utakPotol).catch(e => allapot('A tároló nem érhető el: ' + e.message, 'hiba'));
+napListaz().then(() => napRajzol(true)).then(utakPotol).then(() => setTimeout(nevekPotol, 3000)).catch(e => allapot('A tároló nem érhető el: ' + e.message, 'hiba'));
 
 // Service worker regisztrálása (offline működés).
 if ('serviceWorker' in navigator) {
