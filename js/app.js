@@ -531,6 +531,7 @@ $('utMentes').addEventListener('click', async () => {
   utPanelKiir(km);
   szakaszListaz(await napPontjai(latottNap));
   uzenet('✓ Szakasz adatai elmentve' + (osszevetes(u, km) ? ': ' + osszevetes(u, km) : '.'));
+  if (apkban) szinkKesobb(3000);
   if ($('utLista').open) utListaKiir();
 });
 
@@ -740,7 +741,7 @@ async function leallit() {
     (async () => {
       if (!u.indulas) await vegpontNev(id, 'indulas', pontok[0]);
       await vegpontNev(id, 'erkezes', pontok[pontok.length - 1]);
-    })();
+    })().then(() => szinkKesobb(1000));   // a szakasz (a nevével) a laptopra
   }
   if ($('utLista').open) utListaKiir();
 }
@@ -873,6 +874,210 @@ $('visszaFajl').addEventListener('change', async () => {
   } catch (e) { uzenet('A visszatöltés nem sikerült: ' + (e.message || e), true); }
 });
 
+// ---- Szinkron: telefon (APK) → laptop (PWA), titkosítva, az ntfy.sh közvetítőn át ----
+// Párosítás egyszer: a laptop mutat egy 6 karakteres kódot, ezt a telefonon beírod. A kód alapján a telefon a
+// közvetítőről letölti a kapcsolat adatait (egy hosszú, véletlen téma és egy 256 bites kulcs, AES-GCM).
+// Utána a telefon a még nem nyugtázott pontokat (és az összes szünetet és szakaszadatot) tömörítve, titkosítva,
+// fájlként feltölti; a laptop letölti, beolvassa, és nyugtáz („eddig megvan”). A közvetítő a fájlt 3 óráig őrzi:
+// ha addig a laptop nem nyílik meg, a telefon a következő alkalommal újraküldi. A közvetítő az adatot nem látja.
+// A telefon küld: induláskor, a követés leállítása után, szakaszadat mentése után, amikor a net visszajön, és gombra.
+// A laptop fogad: induláskor, amikor az ablak előkerül, látható ablaknál kétpercenként, és gombra.
+const SZINK_SZERVER = 'https://ntfy.sh';
+const SZINK_TAR = 'holjartam-szinkron';
+const SZINK_UJRA = 2.5 * 3600000;        // ennyi idő után küldi újra ugyanazt, ha nem jött nyugta
+const KOD_BETUK = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const szinkSzerep = apkban ? 'kuldo' : 'fogado';
+function szinkBetolt() { try { return JSON.parse(localStorage.getItem(SZINK_TAR) || 'null'); } catch (e) { return null; } }
+function szinkMent(p) { try { if (p) localStorage.setItem(SZINK_TAR, JSON.stringify(p)); else localStorage.removeItem(SZINK_TAR); } catch (e) { /* nincs hely */ } }
+
+const b64 = b => { let s = ''; new Uint8Array(b).forEach(x => { s += String.fromCharCode(x); }); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+const b64Vissza = t => { const s = String(t).replace(/-/g, '+').replace(/_/g, '/'); const bin = atob(s + '==='.slice((s.length + 3) % 4)); const k = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) k[i] = bin.charCodeAt(i); return k; };
+const folyamon = (bajtok, f) => new Response(new Blob([bajtok]).stream().pipeThrough(f)).arrayBuffer().then(x => new Uint8Array(x));
+const kulcsBol = nyers => crypto.subtle.importKey('raw', nyers, 'AES-GCM', false, ['encrypt', 'decrypt']);
+async function titkosit(kulcs, bajtok) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const t = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, kulcs, bajtok));
+  const ki = new Uint8Array(12 + t.length); ki.set(iv); ki.set(t, 12); return ki;
+}
+const visszafejt = async (kulcs, b) => new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b.slice(0, 12) }, kulcs, b.slice(12)));
+const szovegbe = adat => new TextEncoder().encode(JSON.stringify(adat));
+const szovegbol = b => JSON.parse(new TextDecoder().decode(b));
+// Rövid üzenet (párosítás, nyugta) titkosítva, szövegként: 'v1.' + base64url.
+async function uzenetKuld(szerver, tema, kulcs, adat) {
+  const v = await fetch(szerver + '/' + tema, { method: 'POST', body: 'v1.' + b64(await titkosit(kulcs, szovegbe(adat))) });
+  if (!v.ok) throw new Error('a közvetítő hibát adott (' + v.status + ')');
+}
+async function uzenetekLeker(szerver, tema, mettol) {
+  const v = await fetch(szerver + '/' + tema + '/json?poll=1&since=' + (mettol || '12h'), { cache: 'no-store' });
+  if (!v.ok) throw new Error('a közvetítő hibát adott (' + v.status + ')');
+  return (await v.text()).split('\n').filter(Boolean).map(s => { try { return JSON.parse(s); } catch (e) { return null; } })
+    .filter(u => u && u.event === 'message');
+}
+async function legutobbiUzenet(szerver, tema, kulcs, mettol) {
+  const l = await uzenetekLeker(szerver, tema, mettol);
+  for (let i = l.length - 1; i >= 0; i--) {
+    const m = String(l[i].message || '');
+    if (!m.startsWith('v1.')) continue;
+    try { return szovegbol(await visszafejt(kulcs, b64Vissza(m.slice(3)))); } catch (e) { /* nem a miénk */ }
+  }
+  return null;
+}
+// A párosító kód témája és kulcsa a kódból (a kódot csak a két készülék ismeri; 10 percig érvényes).
+async function kodbol(kod) {
+  const tiszta = String(kod).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('holjartam-par|' + tiszta)));
+  const tema = 'hjp_' + Array.from(h.slice(0, 16), x => x.toString(16).padStart(2, '0')).join('');
+  const alap = await crypto.subtle.importKey('raw', new TextEncoder().encode(tiszta), 'PBKDF2', false, ['deriveKey']);
+  const kulcs = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: new TextEncoder().encode('holjartam-par'), iterations: 150000, hash: 'SHA-256' },
+    alap, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  return { tiszta, tema, kulcs };
+}
+function szinkAllapot(s, hiba) { $('szinkAllapot').textContent = s || ''; $('szinkAllapot').classList.toggle('hiba', !!hiba); }
+function szinkPanel() {
+  const p = szinkBetolt();
+  $('szinkLeiras').textContent = apkban
+    ? 'A telefon a rögzített utakat magától átküldi a laptopra (a Hol jártam ma PWA-jába): induláskor, a követés leállítása után, és a gombra. Titkosítva, az ntfy.sh közvetítőn át.'
+    : 'A laptop a telefonon rögzített utakat magától letölti: induláskor, és amíg az ablak látszik, kétpercenként. Titkosítva, az ntfy.sh közvetítőn át.';
+  $('szinkPar').hidden = !!p;
+  $('szinkKesz').hidden = !p;
+  $('szinkParGomb').textContent = apkban ? '🔗 Párosítás a laptoppal' : '🔗 Párosítás a telefonnal';
+  if (p) {
+    const ido = apkban ? (p.kuldve && p.kuldve.ido) : p.utolso;
+    szinkAllapot('Párosítva. ' + (ido ? 'Utolsó ' + (apkban ? 'küldés' : 'beolvasás') + ': ' + new Date(ido).toLocaleString('hu-HU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + '.' : ''));
+  }
+}
+
+// Párosítás – laptop: kód készítése, a kapcsolat adatai titkosítva a kód témájára.
+$('szinkParGomb').addEventListener('click', async () => {
+  if (apkban) { $('szinkBeir').hidden = false; $('szinkKodMezo').focus(); return; }
+  try {
+    const r = crypto.getRandomValues(new Uint8Array(6));
+    const kod = Array.from(r, x => KOD_BETUK[x % KOD_BETUK.length]).join('');
+    const k = await kodbol(kod);
+    const par = { szerep: 'fogado', szerver: SZINK_SZERVER, tema: 'hjs_' + b64(crypto.getRandomValues(new Uint8Array(18))), kulcs: b64(crypto.getRandomValues(new Uint8Array(32))), feldolgozott: 0 };
+    await uzenetKuld(SZINK_SZERVER, k.tema, k.kulcs, { v: 1, s: par.szerver, t: par.tema, k: par.kulcs, lejar: Date.now() + 10 * 60000 });
+    szinkMent(par);
+    szinkPanel();
+    $('szinkKod').hidden = false;
+    $('szinkKod').innerHTML = 'A telefonon (Beállítások → Szinkron a laptoppal → Párosítás) írd be ezt a kódot:<br><b>' + kod.slice(0, 3) + '-' + kod.slice(3) + '</b><br><span class="kicsi">10 percig érvényes.</span>';
+    szinkAllapot('Várom a telefon első küldését…');
+  } catch (e) { szinkAllapot('A párosítás nem sikerült: ' + (e.message || e) + '. Van internet?', true); }
+});
+// Párosítás – telefon: a kód alapján a kapcsolat adatainak letöltése.
+$('szinkBeirOk').addEventListener('click', async () => {
+  try {
+    const k = await kodbol($('szinkKodMezo').value);
+    if (k.tiszta.length !== 6) { szinkAllapot('A kód 6 karakter (pl. K7P-3QX).', true); return; }
+    szinkAllapot('Párosítás…');
+    const a = await legutobbiUzenet(SZINK_SZERVER, k.tema, k.kulcs, '15m');
+    if (!a || a.v !== 1 || !a.t || !a.k) { szinkAllapot('Ehhez a kódhoz nem találok párosítást. Jól írtad be? (A kód 10 percig érvényes.)', true); return; }
+    if (a.lejar && Date.now() > a.lejar) { szinkAllapot('A kód lejárt: kérj újat a laptopon.', true); return; }
+    szinkMent({ szerep: 'kuldo', szerver: a.s || SZINK_SZERVER, tema: a.t, kulcs: a.k, nyugta: 0 });
+    $('szinkKodMezo').value = '';
+    $('szinkBeir').hidden = true;
+    szinkPanel();
+    await szinkronKuld(true);
+  } catch (e) { szinkAllapot('A párosítás nem sikerült: ' + (e.message || e) + '. Van internet?', true); }
+});
+$('szinkTorol').addEventListener('click', () => {
+  if (!confirm('Törlöd a párosítást? Az adatok megmaradnak, csak a szinkron áll le (újra párosítható).')) return;
+  szinkMent(null);
+  $('szinkKod').hidden = true;
+  szinkPanel();
+  szinkAllapot('A párosítás törölve.');
+});
+$('szinkMost').addEventListener('click', () => { if (apkban) szinkronKuld(true); else szinkronFogad(true); });
+
+// Telefon: küldés (csak ami újabb a nyugtánál; a szüneteket és a szakaszadatokat mindig, mert azok kicsik).
+let szinkFut = false;
+async function szinkronKuld(kezi) {
+  const p = szinkBetolt();
+  if (!p || p.szerep !== 'kuldo' || szinkFut) return;
+  if (!navigator.onLine) { if (kezi) szinkAllapot('Nincs internet: a küldés később, magától megtörténik.', true); return; }
+  szinkFut = true;
+  try {
+    const kulcs = await kulcsBol(b64Vissza(p.kulcs));
+    const ny = await legutobbiUzenet(p.szerver, p.tema + '_ny', kulcs, '12h').catch(() => null);
+    if (ny && ny.ig >= (p.nyugta || 0)) { p.nyugta = ny.ig; p.nyugtaHash = ny.hash; szinkMent(p); }
+    const pontok = (await mindet('pontok')).filter(x => x.ido > (p.nyugta || 0)).map(({ id, ...x }) => x);
+    const szunetek = (await mindet('szunetek')).map(({ id, ...x }) => x);
+    const utak = await mindet('utak');
+    const t = JSON.stringify([utak, szunetek]);
+    let hash = 0; for (let i = 0; i < t.length; i++) hash = (hash * 31 + t.charCodeAt(i)) | 0;
+    hash = String(hash >>> 0);
+    const ig = pontok.reduce((m, x) => Math.max(m, x.ido), p.nyugta || 0);
+    if (!pontok.length && hash === p.nyugtaHash) { if (kezi) szinkAllapot('✓ A laptopon már minden megvan.'); return; }
+    if (!kezi && p.kuldve && p.kuldve.ig === ig && p.kuldve.hash === hash && Date.now() - p.kuldve.ido < SZINK_UJRA) return;
+    if (kezi) szinkAllapot('Küldés…');
+    const csomag = await titkosit(kulcs, await folyamon(szovegbe({ v: 1, ig, hash, pontok, szunetek, utak }), new CompressionStream('deflate-raw')));
+    const v = await fetch(p.szerver + '/' + p.tema + '?filename=holjartam.bin', { method: 'PUT', body: csomag });
+    if (!v.ok) throw new Error('a közvetítő hibát adott (' + v.status + (v.status === 413 ? ': túl nagy' : '') + ')');
+    p.kuldve = { ig, hash, ido: Date.now() };
+    szinkMent(p);
+    szinkPanel();
+    if (kezi) szinkAllapot('✓ Elküldve (' + pontok.length + ' új pont, ' + utak.length + ' szakasz). A laptop a következő megnyitáskor beolvassa.');
+  } catch (e) {
+    if (kezi) szinkAllapot('A küldés nem sikerült: ' + (e.message || e) + '.', true);
+  } finally { szinkFut = false; }
+}
+// Laptop: fogadás (a még fel nem dolgozott fájlok), beolvasás, nyugta.
+async function szinkronFogad(kezi) {
+  const p = szinkBetolt();
+  if (!p || p.szerep !== 'fogado' || szinkFut) return;
+  if (!navigator.onLine) { if (kezi) szinkAllapot('Nincs internet.', true); return; }
+  szinkFut = true;
+  try {
+    const kulcs = await kulcsBol(b64Vissza(p.kulcs));
+    const l = (await uzenetekLeker(p.szerver, p.tema, '12h')).filter(u => u.attachment && u.attachment.url && u.time * 1000 > (p.feldolgozott || 0))
+      .sort((a, b) => a.time - b.time);
+    let ujP = 0, ujU = 0, utolsoCsomag = null, lejart = 0;
+    for (const u of l) {
+      if (u.attachment.expires && u.attachment.expires * 1000 < Date.now()) { lejart++; p.feldolgozott = u.time * 1000; continue; }
+      const v = await fetch(u.attachment.url, { cache: 'no-store' });
+      if (!v.ok) { if (v.status === 404) { lejart++; p.feldolgozott = u.time * 1000; continue; } throw new Error('a fájl nem tölthető le (' + v.status + ')'); }
+      const cs = szovegbol(await folyamon(await visszafejt(kulcs, new Uint8Array(await v.arrayBuffer())), new DecompressionStream('deflate-raw')));
+      const r = await szinkBeolvas(cs);
+      ujP += r.p; ujU += r.u;
+      utolsoCsomag = cs;
+      p.feldolgozott = u.time * 1000;
+    }
+    if (utolsoCsomag) {
+      await uzenetKuld(p.szerver, p.tema + '_ny', kulcs, { ig: utolsoCsomag.ig, hash: utolsoCsomag.hash });
+      p.utolso = Date.now();
+      $('szinkKod').hidden = true;
+    }
+    szinkMent(p);
+    szinkPanel();
+    if (utolsoCsomag) {
+      await napListaz();
+      await napRajzol(true);
+      if ($('utLista').open) utListaKiir();
+      uzenet('🔄 Szinkron a telefonról: ' + ujP + ' új pont' + (ujU ? ', ' + ujU + ' új szakasz' : '') + '.');
+    } else if (kezi) szinkAllapot(lejart ? 'A közvetítőn lévő küldés már lejárt: nyisd meg az appot a telefonon (újraküldi), utána próbáld újra.' : 'Nincs új adat a telefonról.');
+  } catch (e) {
+    if (kezi) szinkAllapot('A szinkron nem sikerült: ' + (e.message || e) + '.', true);
+  } finally { szinkFut = false; }
+}
+// Beolvasás: a pontokból és szünetekből ami még nincs meg; a szakaszadatok a telefoné szerint (név, km-óra).
+async function szinkBeolvas(cs) {
+  const pk = new Set((await mindet('pontok')).map(x => x.szakasz + '|' + x.ido));
+  const sk = new Set((await mindet('szunetek')).map(x => x.szakasz + '|' + x.tol));
+  const uk = new Set((await mindet('utak')).map(x => x.szakasz));
+  const ujP = (cs.pontok || []).filter(x => !pk.has(x.szakasz + '|' + x.ido));
+  const ujS = (cs.szunetek || []).filter(x => !sk.has(x.szakasz + '|' + x.tol));
+  await tar('readwrite', s => { ujP.forEach(x => s.add(x)); });
+  await tar('readwrite', s => { ujS.forEach(x => s.add(x)); }, 'szunetek');
+  await tar('readwrite', s => { (cs.utak || []).forEach(x => s.put(x)); }, 'utak');
+  return { p: ujP.length, u: (cs.utak || []).filter(x => !uk.has(x.szakasz)).length };
+}
+// Automatikus indítások.
+let szinkIdo = null;
+function szinkKesobb(ms) { clearTimeout(szinkIdo); szinkIdo = setTimeout(() => (apkban ? szinkronKuld(false) : szinkronFogad(false)), ms); }
+window.addEventListener('online', () => szinkKesobb(3000));
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !apkban) szinkKesobb(1000); });
+if (!apkban) setInterval(() => { if (document.visibilityState === 'visible') szinkronFogad(false); }, 120000);
+szinkPanel();
+
 // ---- Vízszintes kijelző: pontos idő és sebesség ----
 let vzSeb = null, vzSebIdo = 0;       // az utolsó GPS-sebesség (m/s) és mikor jött
 let vzForgas = 0;                     // a gyorsulásmérő szerint: 0 = álló, 90 / -90 = oldalra fordítva
@@ -992,7 +1197,7 @@ if (apkban) {
 }
 if ($('beallitasok')) $('beallitasok').addEventListener('click', () => Hatter.openSettings().catch(() => {}));
 vzFrissit();
-napListaz().then(() => napRajzol(true)).then(utakPotol).then(() => setTimeout(nevekPotol, 3000)).catch(e => allapot('A tároló nem érhető el: ' + e.message, 'hiba'));
+napListaz().then(() => napRajzol(true)).then(utakPotol).then(() => { setTimeout(nevekPotol, 3000); szinkKesobb(apkban ? 8000 : 1500); }).catch(e => allapot('A tároló nem érhető el: ' + e.message, 'hiba'));
 
 // Service worker regisztrálása (offline működés).
 if ('serviceWorker' in navigator) {

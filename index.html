@@ -91,6 +91,23 @@
         <button type="button" class="gomb masodlagos" id="visszaGomb">📂 Visszatöltés fájlból</button>
         <input type="file" id="visszaFajl" accept=".json,application/json" hidden>
       </div>
+      <h3>Szinkron a laptoppal</h3>
+      <p class="kicsi" id="szinkLeiras"></p>
+      <div id="szinkPar">
+        <div class="gombok"><button type="button" class="gomb masodlagos" id="szinkParGomb">🔗 Párosítás</button></div>
+        <div id="szinkBeir" hidden>
+          <label class="mezo">A laptopon látható kód <input type="text" id="szinkKodMezo" maxlength="9" autocapitalize="characters" autocomplete="off" placeholder="pl. K7P-3QX"></label>
+          <button type="button" class="gomb" id="szinkBeirOk">Párosítás</button>
+        </div>
+      </div>
+      <p id="szinkKod" class="szink-kod" hidden></p>
+      <div id="szinkKesz" hidden>
+        <div class="gombok">
+          <button type="button" class="gomb masodlagos" id="szinkMost">🔄 Szinkron most</button>
+          <button type="button" class="gomb masodlagos torol" id="szinkTorol">Párosítás törlése</button>
+        </div>
+      </div>
+      <p class="kicsi" id="szinkAllapot"></p>
     </details>
   </main>
 

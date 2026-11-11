@@ -87,3 +87,6 @@ footer { max-width: 720px; margin: 0 auto; padding: 0 16px 24px; color: #5d6b7c;
 .cim-buborek { font: 14px/1.4 system-ui, sans-serif; }
 .cim-kicsi { font-size: 12px; opacity: .7; }
 .cim-ido { margin-top: 6px; color: #1f6f43; }
+.szink-kod { background: #e3f1e8; border-radius: 10px; padding: 12px; margin: 8px 0; }
+.szink-kod b { font: 700 2rem ui-monospace, Consolas, monospace; letter-spacing: .15em; color: #1f6f43; }
+#szinkAllapot.hiba { color: #c62828; }
